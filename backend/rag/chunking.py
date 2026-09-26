@@ -8,10 +8,12 @@ def create_chunks(text, chunk_size=500, overlap=50):
     start = 0
 
     while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
 
-        if chunk.strip():
+        end = start + chunk_size
+
+        chunk = text[start:end].strip()
+
+        if chunk:
             chunks.append(chunk)
 
         start = end - overlap
@@ -19,28 +21,203 @@ def create_chunks(text, chunk_size=500, overlap=50):
     return chunks
 
 
-def process_slides(extracted_data, document_name):
+def normalize_document(extracted_data, document_name):
+    """
+    Convert Member 2's different document formats
+    into one common structure for RAG.
+    """
+
+    document_type = extracted_data.get("type")
+
+    sections = []
+
+    # -------------------------
+    # PDF
+    # -------------------------
+
+    if document_type == "pdf":
+
+        for page in extracted_data.get("pages", []):
+
+            sections.append({
+                "text": page.get("text", ""),
+                "page": page.get("page"),
+                "slide": None,
+                "sheet": None,
+                "section": "PDF Page",
+            })
+
+    # -------------------------
+    # PPTX
+    # -------------------------
+
+    elif document_type == "pptx":
+
+        for slide in extracted_data.get("slides", []):
+
+            sections.append({
+                "text": slide.get("text", ""),
+                "page": None,
+                "slide": slide.get("slide"),
+                "sheet": None,
+                "section": "PowerPoint Slide",
+            })
+
+    # -------------------------
+    # IMAGE / OCR
+    # -------------------------
+
+    elif document_type == "image":
+
+        sections.append({
+            "text": extracted_data.get("text", ""),
+            "page": None,
+            "slide": None,
+            "sheet": None,
+            "section": "OCR",
+        })
+
+    # -------------------------
+    # TXT
+    # -------------------------
+
+    elif document_type == "txt":
+
+        sections.append({
+            "text": extracted_data.get("text", ""),
+            "page": None,
+            "slide": None,
+            "sheet": None,
+            "section": "Text File",
+        })
+
+    # -------------------------
+    # DOCX
+    # -------------------------
+
+    elif document_type == "docx":
+
+        for text in extracted_data.get("paragraphs", []):
+
+            sections.append({
+                "text": text,
+                "page": None,
+                "slide": None,
+                "sheet": None,
+                "section": "DOCX Paragraph",
+            })
+
+        for table in extracted_data.get("tables", []):
+
+            table_text = "\n".join(
+                " | ".join(row)
+                for row in table.get("rows", [])
+            )
+
+            sections.append({
+                "text": table_text,
+                "page": None,
+                "slide": None,
+                "sheet": None,
+                "section": f"DOCX Table {table.get('table')}",
+            })
+
+    # -------------------------
+    # CSV
+    # -------------------------
+
+    elif document_type == "csv":
+
+        columns = extracted_data.get("columns", [])
+        rows = extracted_data.get("rows", [])
+
+        csv_text = " | ".join(map(str, columns))
+
+        for row in rows:
+            csv_text += "\n" + " | ".join(
+                str(row.get(column, ""))
+                for column in columns
+            )
+
+        sections.append({
+            "text": csv_text,
+            "page": None,
+            "slide": None,
+            "sheet": None,
+            "section": "CSV",
+        })
+
+    # -------------------------
+    # XLSX
+    # -------------------------
+
+    elif document_type == "xlsx":
+
+        for sheet in extracted_data.get("sheets", []):
+
+            columns = sheet.get("columns", [])
+            rows = sheet.get("rows", [])
+
+            sheet_text = " | ".join(
+                map(str, columns)
+            )
+
+            for row in rows:
+
+                sheet_text += "\n" + " | ".join(
+                    str(row.get(column, ""))
+                    for column in columns
+                )
+
+            sections.append({
+                "text": sheet_text,
+                "page": None,
+                "slide": None,
+                "sheet": sheet.get("sheet_name"),
+                "section": "Excel Sheet",
+            })
+
+    else:
+
+        raise ValueError(
+            f"Unsupported extracted document type: {document_type}"
+        )
+
+    # -------------------------
+    # CREATE FINAL CHUNKS
+    # -------------------------
+
     all_chunks = []
+
     chunk_id = 0
 
-    for slide_data in extracted_data["slides"]:
+    for section in sections:
 
-        slide_number = slide_data["slide"]
+        text = section["text"]
 
-        # Combine all text from the slide
-        slide_text = " ".join(slide_data["text"])
+        if not text:
+            continue
 
-        chunks = create_chunks(slide_text)
+        chunks = create_chunks(text)
 
         for chunk in chunks:
 
             all_chunks.append({
+
                 "id": chunk_id,
+
                 "text": chunk,
+
                 "document": document_name,
-                "page": None,
-                "slide": slide_number,
-                "section": "Unknown"
+
+                "page": section["page"],
+
+                "slide": section["slide"],
+
+                "sheet": section["sheet"],
+
+                "section": section["section"]
+
             })
 
             chunk_id += 1
@@ -50,10 +227,24 @@ def process_slides(extracted_data, document_name):
 
 def save_chunks(chunks):
 
-    os.makedirs("../data", exist_ok=True)
+    data_folder = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "data"
+        )
+    )
+
+    os.makedirs(data_folder, exist_ok=True)
+
+    output_path = os.path.join(
+        data_folder,
+        "chunks.json"
+    )
 
     with open(
-        "../data/chunks.json",
+        output_path,
         "w",
         encoding="utf-8"
     ) as file:
@@ -65,38 +256,5 @@ def save_chunks(chunks):
             ensure_ascii=False
         )
 
-
-if __name__ == "__main__":
-
-    # Test data in Member 2's format
-    extracted_data = {
-        "type": "pptx",
-        "slides": [
-            {
-                "slide": 1,
-                "text": [
-                    "HACKSTREAK 3.0 - 2026",
-                    "Teams Name: CONNECT4"
-                ]
-            },
-            {
-                "slide": 2,
-                "text": [
-                    "Problem Understanding",
-                    "During disasters or network outages, cellular networks may become unavailable.",
-                    "Proposed Solution",
-                    "A self-forming offline communication network."
-                ]
-            }
-        ]
-    }
-
-    chunks = process_slides(
-        extracted_data,
-        "Hackstreak ppt 2.pptx"
-    )
-
-    save_chunks(chunks)
-
-    print("Chunks created successfully!")
+    print("Chunks saved to:", output_path)
     print("Number of chunks:", len(chunks))
