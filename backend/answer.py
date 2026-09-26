@@ -1,31 +1,54 @@
-def generate_answer(question, context):
-    """
-    Generates an answer using the retrieved context.
+def generate_answer(question, retrieved_information):
 
-    This is a temporary version.
-    Later, we will connect this function to an actual LLM.
-    """
+    if not retrieved_information:
+        return {
+            "answer": "I could not find relevant information in the uploaded documents.",
+            "sources": []
+        }
 
-    # Temporary answer for testing
-    answer = (
-        "Based on the provided document, "
-        "the total project budget for 2025 was ₹10 lakh."
-    )
+    best_result = retrieved_information[0]
 
-    return answer
+    answer = best_result["text"]
+
+    sources = []
+
+    for item in retrieved_information:
+        sources.append({
+            "document": item["document"],
+            "page": item["page"],
+            "slide": item["slide"],
+            "section": item["section"]
+        })
+
+    return {
+        "answer": answer,
+        "sources": sources
+    }
 
 
 if __name__ == "__main__":
 
-    question = "What was the project budget?"
+    sample_results = [
+        {
+            "text": "A self-forming offline communication network.",
+            "document": "Hackstreak ppt 2.pptx",
+            "page": None,
+            "slide": 2,
+            "section": "Unknown"
+        }
+    ]
 
-    context = """
-    Source: project_report.pdf
-    Page: 12
-    Content: The total project budget for 2025 was ₹10 lakh.
-    """
+    result = generate_answer(
+        "What is the proposed solution?",
+        sample_results
+    )
 
-    answer = generate_answer(question, context)
+    print("\nAnswer:")
+    print(result["answer"])
 
-    print("AI Answer:")
-    print(answer)
+    print("\nSources:")
+
+    for source in result["sources"]:
+        print(source["document"])
+        print("Page:", source["page"])
+        print("Slide:", source["slide"])

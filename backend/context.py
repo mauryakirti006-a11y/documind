@@ -1,41 +1,27 @@
-def build_context(retrieved_chunks):
-    """
-    Converts retrieved document chunks into a clean
-    context that can be given to the AI model.
-    """
+from retrieve import retrieve_information
 
+
+def create_context(retrieved_information):
     context = ""
 
-    for chunk in retrieved_chunks:
-
-        context += (
-            f"Source: {chunk['file']}\n"
-            f"Page: {chunk['page']}\n"
-            f"Content: {chunk['text']}\n\n"
-        )
+    for item in retrieved_information:
+        context += f"""
+Source: {item['document']}
+Page: {item['page']}
+Slide: {item['slide']}
+Content: {item['text']}
+"""
 
     return context
 
 
 if __name__ == "__main__":
 
-    # Temporary sample data
-    # Later this will come from retrieve.py
+    question = input("Ask a question: ")
 
-    sample_chunks = [
-        {
-            "text": "The total project budget for 2025 was ₹10 lakh.",
-            "file": "project_report.pdf",
-            "page": 12
-        },
-        {
-            "text": "The project was completed in December 2025.",
-            "file": "project_report.pdf",
-            "page": 24
-        }
-    ]
+    results = retrieve_information(question)
 
-    context = build_context(sample_chunks)
+    context = create_context(results)
 
-    print("Context for AI:")
+    print("\nContext for AI:\n")
     print(context)
