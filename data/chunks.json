@@ -1,0 +1,30 @@
+[
+    {
+        "id": 0,
+        "text": "\n    Artificial intelligence is used to analyze documents.\n    Document intelligence helps organizat",
+        "document": "sample_document.pdf",
+        "page": 1,
+        "section": "Introduction"
+    },
+    {
+        "id": 1,
+        "text": "ence helps organizations search large collections.\n    OCR can extract text from scanned documents.\n",
+        "document": "sample_document.pdf",
+        "page": 1,
+        "section": "Introduction"
+    },
+    {
+        "id": 2,
+        "text": " scanned documents.\n    Semantic search helps users find information based on meaning.\n    ",
+        "document": "sample_document.pdf",
+        "page": 1,
+        "section": "Introduction"
+    },
+    {
+        "id": 3,
+        "text": "aning.\n    ",
+        "document": "sample_document.pdf",
+        "page": 1,
+        "section": "Introduction"
+    }
+]
