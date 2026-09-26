@@ -1,0 +1,166 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #222;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.header {
+  background: #1f2937;
+  color: white;
+  padding: 35px 20px;
+  text-align: center;
+}
+
+.header h1 {
+  margin: 0 0 10px;
+  font-size: 32px;
+}
+
+.header p {
+  margin: 0;
+  color: #d1d5db;
+}
+
+.container {
+  width: 90%;
+  max-width: 950px;
+  margin: 30px auto;
+}
+
+.card {
+  background: white;
+  padding: 25px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+  margin-top: 0;
+  color: #1f2937;
+}
+
+.description {
+  color: #666;
+}
+
+.upload-box {
+  border: 2px dashed #cbd5e1;
+  padding: 25px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.upload-box input {
+  margin-bottom: 15px;
+}
+
+button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 11px 20px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.selected-file {
+  margin: 10px 0 15px;
+}
+
+.success {
+  margin-top: 15px;
+  padding: 12px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 7px;
+}
+
+.error {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 7px;
+}
+
+.document-info {
+  background: #f8fafc;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.summary,
+.answer {
+  background: #f8fafc;
+  padding: 18px;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+
+.empty {
+  color: #777;
+  padding: 15px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.question-box {
+  display: flex;
+  gap: 10px;
+}
+
+.question-box input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 15px;
+}
+
+.evidence {
+  border: 1px solid #e5e7eb;
+  padding: 18px;
+  margin-top: 15px;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.evidence-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.evidence-text {
+  margin-top: 12px;
+  padding: 15px;
+  background: white;
+  border-left: 4px solid #2563eb;
+  line-height: 1.6;
+}
+
+footer {
+  text-align: center;
+  padding: 25px;
+  color: #777;
+}

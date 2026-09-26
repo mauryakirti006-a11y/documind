@@ -18,7 +18,10 @@ BASE_DIR = os.path.abspath(
     )
 )
 
-DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.path.join(
+    BASE_DIR,
+    "data"
+)
 
 INDEX_PATH = os.path.join(
     DATA_DIR,
@@ -35,7 +38,9 @@ CHUNKS_PATH = os.path.join(
 # LOAD MODEL
 # --------------------------------------------------
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer(
+    "all-MiniLM-L6-v2"
+)
 
 
 # --------------------------------------------------
@@ -43,11 +48,14 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 # --------------------------------------------------
 
 if not os.path.exists(INDEX_PATH):
+
     raise FileNotFoundError(
         f"FAISS index not found: {INDEX_PATH}"
     )
 
-index = faiss.read_index(INDEX_PATH)
+index = faiss.read_index(
+    INDEX_PATH
+)
 
 
 # --------------------------------------------------
@@ -55,6 +63,7 @@ index = faiss.read_index(INDEX_PATH)
 # --------------------------------------------------
 
 if not os.path.exists(CHUNKS_PATH):
+
     raise FileNotFoundError(
         f"chunks.json not found: {CHUNKS_PATH}"
     )
@@ -90,18 +99,7 @@ def retrieve_information(
     top_k=5,
     threshold=1.5
 ):
-    """
-    Search the FAISS vector database for chunks
-    relevant to the user's question.
 
-    Returns:
-        {
-            "relevant": True/False,
-            "results": [...]
-        }
-    """
-
-    # Check empty question
     if not question or not question.strip():
 
         return {
@@ -110,6 +108,7 @@ def retrieve_information(
         }
 
     question = question.strip()
+
 
     # --------------------------------------------------
     # CREATE QUESTION EMBEDDING
@@ -125,6 +124,7 @@ def retrieve_information(
         dtype="float32"
     )
 
+
     # --------------------------------------------------
     # SEARCH FAISS
     # --------------------------------------------------
@@ -139,7 +139,9 @@ def retrieve_information(
         search_k
     )
 
+
     results = []
+
 
     # --------------------------------------------------
     # PROCESS RESULTS
@@ -150,40 +152,68 @@ def retrieve_information(
         indices[0]
     ):
 
-        # Invalid FAISS result
         if index_number == -1:
             continue
 
-        # Ignore results that are too far away
         if float(distance) > threshold:
             continue
 
-        # Safety check
         if index_number >= len(chunks):
             continue
 
         chunk = chunks[index_number]
 
+
         results.append({
-            "text": chunk.get("text", ""),
-            "document": chunk.get("document"),
-            "page": chunk.get("page"),
-            "slide": chunk.get("slide"),
-            "sheet": chunk.get("sheet"),
-            "section": chunk.get("section"),
-            "distance": float(distance)
+
+            "text": chunk.get(
+                "text",
+                ""
+            ),
+
+            "document": chunk.get(
+                "document"
+            ),
+
+            "page": chunk.get(
+                "page"
+            ),
+
+            "slide": chunk.get(
+                "slide"
+            ),
+
+            "sheet": chunk.get(
+                "sheet"
+            ),
+
+            "section": chunk.get(
+                "section"
+            ),
+
+            # NEW:
+            # Path to related image/visual
+            "visual": chunk.get(
+                "visual"
+            ),
+
+            "distance": float(
+                distance
+            )
         })
+
 
     # --------------------------------------------------
     # RELEVANCE DECISION
     # --------------------------------------------------
 
-    if len(results) == 0:
+    if not results:
 
         return {
             "relevant": False,
             "results": []
         }
+
 
     return {
         "relevant": True,
@@ -198,7 +228,11 @@ def retrieve_information(
 if __name__ == "__main__":
 
     print("=" * 60)
-    print("DOCUMENT RETRIEVAL TEST")
+
+    print(
+        "DOCUMENT RETRIEVAL TEST"
+    )
+
     print("=" * 60)
 
     print(
@@ -220,7 +254,9 @@ if __name__ == "__main__":
     )
 
     print()
+
     print("=" * 60)
+
 
     if not output["relevant"]:
 
@@ -232,6 +268,7 @@ if __name__ == "__main__":
             "This question is not related "
             "to the uploaded document."
         )
+
 
     else:
 
@@ -246,12 +283,14 @@ if __name__ == "__main__":
 
         print("=" * 60)
 
+
         for number, result in enumerate(
             output["results"],
             start=1
         ):
 
             print()
+
             print(
                 f"--- Result {number} ---"
             )
@@ -277,16 +316,16 @@ if __name__ == "__main__":
             )
 
             print(
-                "Section:",
-                result["section"]
+                "Content:",
+                result["text"]
+            )
+
+            print(
+                "Visual:",
+                result["visual"]
             )
 
             print(
                 "Distance:",
                 result["distance"]
-            )
-
-            print(
-                "Content:",
-                result["text"]
             )

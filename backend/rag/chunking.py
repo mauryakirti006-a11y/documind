@@ -7,6 +7,7 @@ import os
 # --------------------------------------------------
 
 def create_chunks(text, chunk_size=500, overlap=50):
+
     chunks = []
 
     start = 0
@@ -20,7 +21,6 @@ def create_chunks(text, chunk_size=500, overlap=50):
         if chunk:
             chunks.append(chunk)
 
-        # Prevent infinite loop for very small text
         if end >= len(text):
             break
 
@@ -34,10 +34,6 @@ def create_chunks(text, chunk_size=500, overlap=50):
 # --------------------------------------------------
 
 def normalize_document(extracted_data, document_name):
-    """
-    Convert Member 2's extracted document formats
-    into one common structure for RAG.
-    """
 
     document_type = extracted_data.get("type")
 
@@ -58,6 +54,7 @@ def normalize_document(extracted_data, document_name):
                 "slide": None,
                 "sheet": None,
                 "section": "PDF Page",
+                "visual": page.get("visual")
             })
 
 
@@ -75,6 +72,7 @@ def normalize_document(extracted_data, document_name):
                 "slide": slide.get("slide"),
                 "sheet": None,
                 "section": "PowerPoint Slide",
+                "visual": slide.get("visual")
             })
 
 
@@ -90,6 +88,7 @@ def normalize_document(extracted_data, document_name):
             "slide": None,
             "sheet": None,
             "section": "OCR",
+            "visual": extracted_data.get("visual")
         })
 
 
@@ -105,6 +104,7 @@ def normalize_document(extracted_data, document_name):
             "slide": None,
             "sheet": None,
             "section": "Text File",
+            "visual": None
         })
 
 
@@ -114,7 +114,6 @@ def normalize_document(extracted_data, document_name):
 
     elif document_type == "docx":
 
-        # Paragraphs
         for text in extracted_data.get("paragraphs", []):
 
             sections.append({
@@ -123,10 +122,10 @@ def normalize_document(extracted_data, document_name):
                 "slide": None,
                 "sheet": None,
                 "section": "DOCX Paragraph",
+                "visual": None
             })
 
 
-        # Tables
         for table in extracted_data.get("tables", []):
 
             table_text = "\n".join(
@@ -142,8 +141,27 @@ def normalize_document(extracted_data, document_name):
                 "page": None,
                 "slide": None,
                 "sheet": None,
-                "section": f"DOCX Table {table.get('table')}",
+                "section": "DOCX Table",
+                "visual": None
             })
+
+
+        # Embedded images
+
+        for image in extracted_data.get("images", []):
+
+            image_text = image.get("text", "")
+
+            if image_text:
+
+                sections.append({
+                    "text": image_text,
+                    "page": None,
+                    "slide": None,
+                    "sheet": None,
+                    "section": "DOCX Image",
+                    "visual": image.get("visual")
+                })
 
 
     # --------------------------------------------------
@@ -153,6 +171,7 @@ def normalize_document(extracted_data, document_name):
     elif document_type == "csv":
 
         columns = extracted_data.get("columns", [])
+
         rows = extracted_data.get("rows", [])
 
         csv_text = " | ".join(
@@ -172,6 +191,7 @@ def normalize_document(extracted_data, document_name):
             "slide": None,
             "sheet": None,
             "section": "CSV",
+            "visual": None
         })
 
 
@@ -183,20 +203,12 @@ def normalize_document(extracted_data, document_name):
 
         sheets = extracted_data.get("sheets", {})
 
-        # Member 2 returns sheets as:
-        #
-        # {
-        #     "SheetName": {
-        #         "columns": [...],
-        #         "rows": [...]
-        #     }
-        # }
-
         if isinstance(sheets, dict):
 
             for sheet_name, sheet in sheets.items():
 
                 columns = sheet.get("columns", [])
+
                 rows = sheet.get("rows", [])
 
                 sheet_text = " | ".join(
@@ -216,17 +228,16 @@ def normalize_document(extracted_data, document_name):
                     "slide": None,
                     "sheet": sheet_name,
                     "section": "Excel Sheet",
+                    "visual": sheet.get("visual")
                 })
 
-
-        # Also support list format
-        # in case Member 2 changes the processor later
 
         elif isinstance(sheets, list):
 
             for sheet in sheets:
 
                 columns = sheet.get("columns", [])
+
                 rows = sheet.get("rows", [])
 
                 sheet_text = " | ".join(
@@ -246,6 +257,7 @@ def normalize_document(extracted_data, document_name):
                     "slide": None,
                     "sheet": sheet.get("sheet_name"),
                     "section": "Excel Sheet",
+                    "visual": sheet.get("visual")
                 })
 
 
@@ -268,7 +280,6 @@ def normalize_document(extracted_data, document_name):
 
     chunk_id = 0
 
-
     for section in sections:
 
         text = section["text"]
@@ -277,7 +288,6 @@ def normalize_document(extracted_data, document_name):
             continue
 
         chunks = create_chunks(text)
-
 
         for chunk in chunks:
 
@@ -295,12 +305,13 @@ def normalize_document(extracted_data, document_name):
 
                 "sheet": section["sheet"],
 
-                "section": section["section"]
+                "section": section["section"],
+
+                "visual": section.get("visual")
 
             })
 
             chunk_id += 1
-
 
     return all_chunks
 
@@ -320,18 +331,15 @@ def save_chunks(chunks):
         )
     )
 
-
     os.makedirs(
         data_folder,
         exist_ok=True
     )
 
-
     output_path = os.path.join(
         data_folder,
         "chunks.json"
     )
-
 
     with open(
         output_path,
@@ -345,7 +353,6 @@ def save_chunks(chunks):
             indent=4,
             ensure_ascii=False
         )
-
 
     print(
         "Chunks saved to:",
