@@ -3,8 +3,7 @@ import numpy as np
 import os
 import json
 
-from embeddings import create_embeddings
-
+from .embeddings import create_embeddings
 
 def create_vector_store(embeddings):
     embeddings = np.array(embeddings).astype("float32")
