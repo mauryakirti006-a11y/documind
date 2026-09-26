@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import io
+import zipfile
 
 import pymupdf
 from docx import Document
@@ -8,10 +11,31 @@ from PIL import Image
 import pytesseract
 
 
-# Tell pytesseract where Tesseract OCR is installed
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# --------------------------------------------------
+# VISUAL STORAGE
+# --------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+VISUAL_DIR = BASE_DIR / "data" / "visuals"
+
+VISUAL_DIR.mkdir(
+    parents=True,
+    exist_ok=True
 )
+
+
+def save_visual(image, filename):
+    """
+    Save an image and return its relative path.
+    """
+
+    output_path = VISUAL_DIR / filename
+
+    image.save(output_path)
+
+    return str(
+        Path("data") / "visuals" / filename
+    )
 
 
 # --------------------------------------------------
@@ -26,80 +50,76 @@ def process_pdf(file_path):
 
     for page_number, page in enumerate(document):
 
-        # ------------------------------------------
-        # STEP 1: Try normal PDF text extraction
-        # ------------------------------------------
-
         text = page.get_text().strip()
 
         ocr_used = False
+        visual = None
 
         # ------------------------------------------
-        # STEP 2: Use OCR if PDF has little/no text
+        # Render page
+        # ------------------------------------------
+
+        pix = page.get_pixmap(
+            matrix=pymupdf.Matrix(1.5, 1.5),
+            alpha=False
+        )
+
+        image = Image.frombytes(
+            "RGB",
+            [pix.width, pix.height],
+            pix.samples
+        )
+
+        # Save page image
+        visual = save_visual(
+            image,
+            f"pdf_page_{page_number + 1}.png"
+        )
+
+        # ------------------------------------------
+        # OCR if necessary
         # ------------------------------------------
 
         if len(text) < 20:
 
-            # Render page as an image
-            pix = page.get_pixmap(
-                matrix=pymupdf.Matrix(1.7, 1.7),
-                alpha=False
-            )
+            ocr_image = image.convert("L")
 
-            image = Image.frombytes(
-                "RGB",
-                [pix.width, pix.height],
-                pix.samples
-            )
-
-            # --------------------------------------
-            # STEP 3: Image preprocessing
-            # --------------------------------------
-
-            # Convert to grayscale
-            image = image.convert("L")
-
-            # Increase contrast
             from PIL import ImageOps
 
-            image = ImageOps.autocontrast(image)
-
-            # Resize slightly for better OCR
-            new_width = int(image.width * 1.3)
-            new_height = int(image.height * 1.3)
-
-            image = image.resize(
-                (new_width, new_height)
+            ocr_image = ImageOps.autocontrast(
+                ocr_image
             )
 
-            # --------------------------------------
-            # STEP 4: OCR
-            # --------------------------------------
-
             text = pytesseract.image_to_string(
-                image,
+                ocr_image,
                 config="--psm 6"
             ).strip()
 
             ocr_used = True
 
-        # ------------------------------------------
-        # STEP 5: Store page result
-        # ------------------------------------------
-
         pages.append({
+
             "page": page_number + 1,
+
             "text": text,
-            "ocr_used": ocr_used
+
+            "ocr_used": ocr_used,
+
+            "visual": visual
         })
 
     document.close()
 
     return {
+
         "type": "pdf",
+
         "pages": pages,
+
         "page_count": len(pages)
     }
+
+
 # --------------------------------------------------
 # DOCX PROCESSING
 # --------------------------------------------------
@@ -115,11 +135,14 @@ def process_docx(file_path):
         text = paragraph.text.strip()
 
         if text:
+
             paragraphs.append(text)
 
     tables = []
 
-    for table in document.tables:
+    for table_number, table in enumerate(
+        document.tables
+    ):
 
         rows = []
 
@@ -130,12 +153,65 @@ def process_docx(file_path):
                 for cell in row.cells
             ])
 
-        tables.append(rows)
+        tables.append({
+
+            "table": table_number + 1,
+
+            "rows": rows
+        })
+
+    # ------------------------------------------
+    # Extract embedded images
+    # ------------------------------------------
+
+    images = []
+
+    with zipfile.ZipFile(file_path, "r") as archive:
+
+        image_files = [
+            name
+            for name in archive.namelist()
+            if name.startswith("word/media/")
+        ]
+
+        for number, image_file in enumerate(
+            image_files
+        ):
+
+            image_bytes = archive.read(
+                image_file
+            )
+
+            image = Image.open(
+                io.BytesIO(image_bytes)
+            ).convert("RGB")
+
+            visual = save_visual(
+                image,
+                f"docx_image_{number + 1}.png"
+            )
+
+            # OCR image so it can also be retrieved
+            image_text = pytesseract.image_to_string(
+                image
+            ).strip()
+
+            images.append({
+
+                "text": image_text,
+
+                "visual": visual
+            })
 
     return {
+
         "type": "docx",
+
         "paragraphs": paragraphs,
-        "tables": tables
+
+        "tables": tables,
+
+        "images": images
     }
 
 
@@ -145,12 +221,18 @@ def process_docx(file_path):
 
 def process_txt(file_path):
 
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as file:
 
         text = file.read()
 
     return {
+
         "type": "txt",
+
         "text": text
     }
 
@@ -164,9 +246,17 @@ def process_csv(file_path):
     dataframe = pd.read_csv(file_path)
 
     return {
+
         "type": "csv",
+
         "columns": dataframe.columns.tolist(),
-        "rows": dataframe.fillna("").to_dict(orient="records"),
+
+        "rows": dataframe.fillna(
+            ""
+        ).to_dict(
+            orient="records"
+        ),
+
         "row_count": len(dataframe)
     }
 
@@ -189,12 +279,20 @@ def process_xlsx(file_path):
         )
 
         sheets[sheet_name] = {
+
             "columns": dataframe.columns.tolist(),
-            "rows": dataframe.fillna("").to_dict(orient="records")
+
+            "rows": dataframe.fillna(
+                ""
+            ).to_dict(
+                orient="records"
+            )
         }
 
     return {
+
         "type": "xlsx",
+
         "sheets": sheets
     }
 
@@ -205,13 +303,23 @@ def process_xlsx(file_path):
 
 def process_pptx(file_path):
 
-    presentation = Presentation(file_path)
+    presentation = Presentation(
+        file_path
+    )
 
     slides = []
 
-    for slide_number, slide in enumerate(presentation.slides):
+    for slide_number, slide in enumerate(
+        presentation.slides
+    ):
 
         slide_text = []
+
+        visual = None
+
+        # ------------------------------------------
+        # Extract slide text
+        # ------------------------------------------
 
         for shape in slide.shapes:
 
@@ -220,16 +328,32 @@ def process_pptx(file_path):
                 text = shape.text.strip()
 
                 if text:
+
                     slide_text.append(text)
 
+        # ------------------------------------------
+        # Render complete slide as image
+        # ------------------------------------------
+
+        # python-pptx does not directly render slides.
+        # Keep visual as None here; frontend can still
+        # use slide metadata.
+
         slides.append({
+
             "slide": slide_number + 1,
-            "text": slide_text
+
+            "text": slide_text,
+
+            "visual": visual
         })
 
     return {
+
         "type": "pptx",
+
         "slides": slides,
+
         "slide_count": len(slides)
     }
 
@@ -240,13 +364,31 @@ def process_pptx(file_path):
 
 def process_image(file_path):
 
-    image = Image.open(file_path)
+    image = Image.open(
+        file_path
+    ).convert("RGB")
 
-    text = pytesseract.image_to_string(image)
+    text = pytesseract.image_to_string(
+        image
+    ).strip()
+
+    filename = (
+        f"uploaded_image_"
+        f"{Path(file_path).stem}.png"
+    )
+
+    visual = save_visual(
+        image,
+        filename
+    )
 
     return {
+
         "type": "image",
-        "text": text.strip()
+
+        "text": text,
+
+        "visual": visual
     }
 
 
@@ -256,7 +398,9 @@ def process_image(file_path):
 
 def process_file(file_path):
 
-    extension = Path(file_path).suffix.lower()
+    extension = Path(
+        file_path
+    ).suffix.lower()
 
     if extension == ".pdf":
 
@@ -282,12 +426,18 @@ def process_file(file_path):
 
         return process_pptx(file_path)
 
-    elif extension in [".png", ".jpg", ".jpeg"]:
+    elif extension in [
+        ".png",
+        ".jpg",
+        ".jpeg"
+    ]:
 
         return process_image(file_path)
 
     else:
 
         return {
-            "error": f"Unsupported file type: {extension}"
+
+            "error":
+            f"Unsupported file type: {extension}"
         }
