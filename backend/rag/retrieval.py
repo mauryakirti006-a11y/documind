@@ -1,165 +1,106 @@
+from pathlib import Path
 import json
-import os
-
 import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
+
+from rag.embeddings import create_embeddings
 
 
-# --------------------------------------------------
+# ============================================================
 # PATHS
-# --------------------------------------------------
+# ============================================================
 
-BASE_DIR = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        ".."
-    )
-)
+RAG_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = RAG_DIR.parent
+PROJECT_DIR = BACKEND_DIR.parent
 
-DATA_DIR = os.path.join(
-    BASE_DIR,
-    "data"
-)
-
-INDEX_PATH = os.path.join(
-    DATA_DIR,
-    "documents.index"
-)
-
-CHUNKS_PATH = os.path.join(
-    DATA_DIR,
-    "chunks.json"
-)
+INDEX_PATH = PROJECT_DIR / "data" / "documents.index"
+CHUNKS_PATH = PROJECT_DIR / "data" / "chunks.json"
 
 
-# --------------------------------------------------
-# LOAD MODEL
-# --------------------------------------------------
+# ============================================================
+# RETRIEVE INFORMATION
+# ============================================================
 
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
+def retrieve_information(question, top_k=5):
 
+    # --------------------------------------------------------
+    # CHECK FILES
+    # --------------------------------------------------------
 
-# --------------------------------------------------
-# LOAD FAISS INDEX
-# --------------------------------------------------
+    if not INDEX_PATH.exists():
+        raise FileNotFoundError(
+            f"FAISS index not found: {INDEX_PATH}"
+        )
 
-if not os.path.exists(INDEX_PATH):
-
-    raise FileNotFoundError(
-        f"FAISS index not found: {INDEX_PATH}"
-    )
-
-index = faiss.read_index(
-    INDEX_PATH
-)
+    if not CHUNKS_PATH.exists():
+        raise FileNotFoundError(
+            f"Chunks file not found: {CHUNKS_PATH}"
+        )
 
 
-# --------------------------------------------------
-# LOAD CHUNKS
-# --------------------------------------------------
+    # --------------------------------------------------------
+    # LOAD FAISS INDEX
+    # --------------------------------------------------------
 
-if not os.path.exists(CHUNKS_PATH):
-
-    raise FileNotFoundError(
-        f"chunks.json not found: {CHUNKS_PATH}"
-    )
-
-with open(
-    CHUNKS_PATH,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    chunks = json.load(file)
-
-
-# --------------------------------------------------
-# SAFETY CHECK
-# --------------------------------------------------
-
-if index.ntotal != len(chunks):
-
-    raise ValueError(
-        f"FAISS/chunks mismatch: "
-        f"{index.ntotal} vectors but "
-        f"{len(chunks)} chunks."
+    index = faiss.read_index(
+        str(INDEX_PATH)
     )
 
 
-# --------------------------------------------------
-# RETRIEVAL FUNCTION
-# --------------------------------------------------
+    # --------------------------------------------------------
+    # LOAD CHUNKS
+    # --------------------------------------------------------
 
-def retrieve_information(
-    question,
-    top_k=5,
-    threshold=1.5
-):
+    with open(
+        CHUNKS_PATH,
+        "r",
+        encoding="utf-8"
+    ) as file:
 
-    if not question or not question.strip():
-
-        return {
-            "relevant": False,
-            "results": []
-        }
-
-    question = question.strip()
+        chunks = json.load(file)
 
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # CREATE QUESTION EMBEDDING
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
-    question_embedding = model.encode(
-        [question],
-        convert_to_numpy=True
-    )
-
-    question_embedding = np.asarray(
-        question_embedding,
-        dtype="float32"
+    question_embedding = create_embeddings(
+        [question]
     )
 
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # SEARCH FAISS
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
-    search_k = min(
+    actual_top_k = min(
         top_k,
         index.ntotal
     )
 
     distances, indices = index.search(
         question_embedding,
-        search_k
+        actual_top_k
     )
 
 
+    # --------------------------------------------------------
+    # BUILD RESULTS
+    # --------------------------------------------------------
+
     results = []
-
-
-    # --------------------------------------------------
-    # PROCESS RESULTS
-    # --------------------------------------------------
 
     for distance, index_number in zip(
         distances[0],
         indices[0]
     ):
 
-        if index_number == -1:
-            continue
-
-        if float(distance) > threshold:
+        if index_number < 0:
             continue
 
         if index_number >= len(chunks):
             continue
+
 
         chunk = chunks[index_number]
 
@@ -172,7 +113,8 @@ def retrieve_information(
             ),
 
             "document": chunk.get(
-                "document"
+                "document",
+                "Unknown"
             ),
 
             "page": chunk.get(
@@ -191,8 +133,6 @@ def retrieve_information(
                 "section"
             ),
 
-            # NEW:
-            # Path to related image/visual
             "visual": chunk.get(
                 "visual"
             ),
@@ -200,132 +140,77 @@ def retrieve_information(
             "distance": float(
                 distance
             )
+
         })
 
 
-    # --------------------------------------------------
-    # RELEVANCE DECISION
-    # --------------------------------------------------
-
-    if not results:
-
-        return {
-            "relevant": False,
-            "results": []
-        }
-
+    # --------------------------------------------------------
+    # RETURN
+    # --------------------------------------------------------
 
     return {
-        "relevant": True,
-        "results": results
+
+        "results": results,
+
+        "count": len(results)
+
     }
 
 
-# --------------------------------------------------
-# COMMAND-LINE TEST
-# --------------------------------------------------
+# ============================================================
+# TEST
+# ============================================================
 
 if __name__ == "__main__":
 
-    print("=" * 60)
-
-    print(
-        "DOCUMENT RETRIEVAL TEST"
-    )
-
-    print("=" * 60)
-
-    print(
-        f"Loaded vectors: {index.ntotal}"
-    )
-
-    print(
-        f"Loaded chunks: {len(chunks)}"
-    )
-
-    print()
-
     question = input(
         "Ask a question: "
-    ).strip()
+    )
 
-    output = retrieve_information(
-        question
+    result = retrieve_information(
+        question,
+        top_k=5
     )
 
     print()
 
-    print("=" * 60)
+    print(
+        "Retrieved chunks:",
+        len(result["results"])
+    )
 
+    for number, item in enumerate(
+        result["results"],
+        start=1
+    ):
 
-    if not output["relevant"]:
+        print()
 
         print(
-            "❌ IRRELEVANT QUESTION"
+            f"--- Result {number} ---"
         )
 
         print(
-            "This question is not related "
-            "to the uploaded document."
-        )
-
-
-    else:
-
-        print(
-            "✅ RELEVANT QUESTION"
+            "Document:",
+            item["document"]
         )
 
         print(
-            f"Retrieved chunks: "
-            f"{len(output['results'])}"
+            "Page:",
+            item["page"]
         )
 
-        print("=" * 60)
+        print(
+            "Sheet:",
+            item["sheet"]
+        )
 
+        print(
+            "Distance:",
+            item["distance"]
+        )
 
-        for number, result in enumerate(
-            output["results"],
-            start=1
-        ):
-
-            print()
-
-            print(
-                f"--- Result {number} ---"
-            )
-
-            print(
-                "Document:",
-                result["document"]
-            )
-
-            print(
-                "Page:",
-                result["page"]
-            )
-
-            print(
-                "Slide:",
-                result["slide"]
-            )
-
-            print(
-                "Sheet:",
-                result["sheet"]
-            )
-
-            print(
-                "Content:",
-                result["text"]
-            )
-
-            print(
-                "Visual:",
-                result["visual"]
-            )
-
-            print(
-                "Distance:",
-                result["distance"]
-            )
+        print(
+            "Text:",
+            item["text"][:500]
+        )

@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+
+# Tesseract OCR installation
+Tesseract-OCR/
+tesseract.exe
+*.dll
+*.exe
+*.html
+
+# Uploaded documents
+backend/uploads/
+uploads/
+
+# Generated RAG data
+data/chunks.json
+data/documents.index
+data/visuals/
+
+# Python generated files
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build
+frontend/dist/
+doc/
+tessdata/

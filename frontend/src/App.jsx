@@ -1,558 +1,619 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
 
 function App() {
-  const [file, setFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+
   const [uploading, setUploading] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const [summary, setSummary] = useState("");
 
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
 
   const [answer, setAnswer] = useState("");
-  const [evidence, setEvidence] = useState([]);
-  const [summary, setSummary] = useState("");
+  const [results, setResults] = useState([]);
 
   const [error, setError] = useState("");
 
-  // =========================================================
-  // FILE SELECTION
-  // =========================================================
+  // ========================================================
+  // FILE SELECT
+  // ========================================================
 
   const handleFileChange = (event) => {
-    const selectedFile = event.target.files?.[0];
+    const file = event.target.files[0];
 
-    if (!selectedFile) {
-      setFile(null);
+    if (!file) {
       return;
     }
 
-    setFile(selectedFile);
-
-    // Clear previous state
-    setError("");
+    setSelectedFile(file);
     setUploadMessage("");
-    setUploadedFile(null);
+    setUploadSuccess(false);
     setSummary("");
     setAnswer("");
-    setEvidence([]);
+    setResults([]);
+    setError("");
   };
 
-  // =========================================================
-  // FILE UPLOAD
-  // =========================================================
+  // ========================================================
+  // UPLOAD
+  // ========================================================
 
   const handleUpload = async () => {
-    if (!file) {
+    if (!selectedFile) {
       setError("Please select a document first.");
       return;
     }
 
-    setUploading(true);
-    setError("");
-    setUploadMessage("");
-    setUploadedFile(null);
-    setAnswer("");
-    setEvidence([]);
-    setSummary("");
-
     const formData = new FormData();
 
-    // IMPORTANT:
-    // The backend expects the field name "file".
-    formData.append("file", file);
+    formData.append(
+      "file",
+      selectedFile
+    );
+
+    setUploading(true);
+    setUploadMessage("");
+    setUploadSuccess(false);
+    setSummary("");
+    setAnswer("");
+    setResults([]);
+    setError("");
 
     try {
-      console.log("Uploading:", file.name);
-
       const response = await axios.post(
         `${API_URL}/api/files/upload`,
         formData
       );
 
-      console.log("Upload status:", response.status);
-      console.log("Upload response:", response.data);
-
-      const data = response.data || {};
-
-      // Save complete backend response
-      setUploadedFile(data);
+      setUploadSuccess(true);
 
       setUploadMessage(
-        data.message ||
-        "Document uploaded and processed successfully."
+        `${selectedFile.name} uploaded successfully.`
       );
 
-      // Support summary if backend returns one
-      if (data.summary) {
-        setSummary(data.summary);
-      }
+      setSummary(
+        response.data.summary || ""
+      );
 
-      // Support chunks/results if backend returns them
-      if (Array.isArray(data.evidence)) {
-        setEvidence(data.evidence);
-      }
-
-      if (Array.isArray(data.results)) {
-        setEvidence(data.results);
-      }
-
+      console.log(
+        "Upload response:",
+        response.data
+      );
     } catch (err) {
-      console.error("================================");
-      console.error("UPLOAD ERROR");
-      console.error("================================");
-      console.error(err);
-      console.error("Message:", err.message);
-      console.error("Response:", err.response);
-      console.error("Response data:", err.response?.data);
-      console.error("Status:", err.response?.status);
+      console.error(
+        "Upload error:",
+        err
+      );
 
-      let errorMessage = "Document upload failed.";
+      setUploadSuccess(false);
 
-      if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.message) {
-        errorMessage = err.message;
+      if (err.response) {
+        setError(
+          err.response.data?.detail ||
+          `Upload failed. Status: ${err.response.status}`
+        );
+      } else {
+        setError(
+          "Cannot connect to backend. Make sure FastAPI is running on port 8000."
+        );
       }
-
-      setError(errorMessage);
     } finally {
       setUploading(false);
     }
   };
 
-  // =========================================================
+  // ========================================================
   // ASK QUESTION
-  // =========================================================
+  // ========================================================
 
   const askQuestion = async () => {
     if (!question.trim()) {
-      setError("Please enter a question.");
+      setError(
+        "Please enter a question."
+      );
       return;
     }
 
     setAsking(true);
-    setError("");
     setAnswer("");
-    setEvidence([]);
+    setResults([]);
+    setError("");
 
     try {
-      console.log("Question:", question);
-
       const response = await axios.post(
         `${API_URL}/api/ask`,
         {
-          question: question.trim(),
+          question:
+            question.trim()
         }
       );
 
-      console.log("Question response:", response.data);
-
-      const data = response.data || {};
-
-      // =====================================================
-      // IRRELEVANT QUESTION
-      // =====================================================
-
-      if (data.relevant === false) {
-        setAnswer(
-          data.answer ||
-          "This question is not related to the uploaded document."
-        );
-
-        setEvidence([]);
-        return;
-      }
-
-      // =====================================================
-      // NORMAL ANSWER
-      // =====================================================
+      console.log(
+        "Question response:",
+        response.data
+      );
 
       setAnswer(
-        data.answer ||
-        "No answer was returned."
+        response.data.answer || ""
       );
 
-      // Backend may call this "results" or "evidence"
-      setEvidence(
-        data.results ||
-        data.evidence ||
-        []
+      setResults(
+        response.data.results || []
       );
-
     } catch (err) {
-      console.error("================================");
-      console.error("QUESTION ERROR");
-      console.error("================================");
-      console.error(err);
-      console.error("Response:", err.response);
-      console.error("Response data:", err.response?.data);
+      console.error(
+        "Question error:",
+        err
+      );
 
-      let errorMessage = "Could not get an answer.";
-
-      if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.message) {
-        errorMessage = err.message;
+      if (err.response) {
+        setError(
+          err.response.data?.detail ||
+          `Question failed. Status: ${err.response.status}`
+        );
+      } else {
+        setError(
+          "Cannot connect to backend. Make sure FastAPI is running."
+        );
       }
-
-      setError(errorMessage);
-
     } finally {
       setAsking(false);
     }
   };
 
-  // =========================================================
-  // ENTER KEY
-  // =========================================================
+  // ========================================================
+  // ENTER
+  // ========================================================
 
-  const handleQuestionKeyDown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+  const handleKeyDown = (event) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
+
       askQuestion();
     }
   };
 
-  // =========================================================
-  // CLEAR ERROR
-  // =========================================================
+  // ========================================================
+  // LOCATION
+  // ========================================================
 
-  const clearError = () => {
-    setError("");
+  const getSourceLocation = (result) => {
+    const locations = [];
+
+    if (result.page !== null && result.page !== undefined) {
+      locations.push(
+        `Page ${result.page}`
+      );
+    }
+
+    if (result.sheet) {
+      locations.push(
+        `Sheet: ${result.sheet}`
+      );
+    }
+
+    if (result.row !== null && result.row !== undefined) {
+      locations.push(
+        `Row ${result.row}`
+      );
+    }
+
+    if (result.slide !== null && result.slide !== undefined) {
+      locations.push(
+        `Slide ${result.slide}`
+      );
+    }
+
+    return locations.length > 0
+      ? locations.join(" • ")
+      : "Location not available";
   };
-
-  // =========================================================
-  // RENDER
-  // =========================================================
 
   return (
     <div className="app">
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+      {/* ================================================== */}
+      {/* NAVBAR */}
+      {/* ================================================== */}
 
-      <header className="header">
-        <div>
-          <h1>📄 Document Intelligence</h1>
+      <nav className="navbar">
+
+        <div className="brand">
+          <div className="brand-icon">
+            D
+          </div>
+
+          <div>
+            <div className="brand-name">
+              DocuMind
+            </div>
+
+            <div className="brand-subtitle">
+              Intelligent Document Assistant
+            </div>
+          </div>
+        </div>
+
+        <div className="status-pill">
+          <span className="status-dot"></span>
+          AI Ready
+        </div>
+
+      </nav>
+
+      {/* ================================================== */}
+      {/* HERO */}
+      {/* ================================================== */}
+
+      <main className="main">
+
+        <section className="hero">
+
+          <div className="hero-badge">
+            ✦ DOCUMENT INTELLIGENCE
+          </div>
+
+          <h1>
+            Ask your documents.
+            <br />
+            <span>
+              Get intelligent answers.
+            </span>
+          </h1>
 
           <p>
-            Upload a document and ask questions
-            using AI-powered document retrieval.
-          </p>
-        </div>
-      </header>
-
-
-      <main className="container">
-
-        {/* ===================================================
-            UPLOAD SECTION
-        =================================================== */}
-
-        <section className="card">
-
-          <h2>📤 Upload Document</h2>
-
-          <p className="description">
-            Upload PDF, DOCX, TXT, CSV, Excel,
-            PowerPoint or image files.
+            Upload your documents and ask questions
+            using AI-powered semantic search and
+            document-grounded answers.
           </p>
 
-          <div className="upload-box">
+        </section>
 
-            <input
-              type="file"
-              accept="
-                .pdf,
-                .docx,
-                .txt,
-                .csv,
-                .xlsx,
-                .pptx,
-                .png,
-                .jpg,
-                .jpeg
-              "
-              onChange={handleFileChange}
-              disabled={uploading}
-            />
+        {/* ================================================== */}
+        {/* UPLOAD */}
+        {/* ================================================== */}
 
-            {/* Selected file */}
+        <section className="card upload-card">
 
-            {file && (
-              <p className="selected-file">
-                Selected: <strong>{file.name}</strong>
+          <div className="section-heading">
+
+            <div className="section-icon">
+              ↑
+            </div>
+
+            <div>
+              <h2>
+                Upload Document
+              </h2>
+
+              <p>
+                PDF, Word, Excel, PowerPoint, CSV,
+                TXT or images
               </p>
-            )}
-
-            {/* Upload button */}
-
-            <button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-            >
-              {uploading
-                ? "Processing..."
-                : "Upload Document"}
-            </button>
+            </div>
 
           </div>
 
+          <label className="drop-zone">
 
-          {/* Upload success */}
+            <input
+              type="file"
+              onChange={handleFileChange}
+              accept=".pdf,.docx,.txt,.csv,.xlsx,.pptx,.png,.jpg,.jpeg"
+            />
 
-          {uploadMessage && (
-            <div className="success">
-              ✅ {uploadMessage}
+            <div className="upload-symbol">
+              ↑
+            </div>
+
+            <div className="drop-title">
+              {selectedFile
+                ? selectedFile.name
+                : "Choose a document"}
+            </div>
+
+            <div className="drop-text">
+              Click here to browse files
+            </div>
+
+          </label>
+
+          {selectedFile && (
+            <div className="selected-file">
+              <span>Selected</span>
+
+              <strong>
+                {selectedFile.name}
+              </strong>
+            </div>
+          )}
+
+          <button
+            onClick={handleUpload}
+            disabled={
+              !selectedFile ||
+              uploading
+            }
+            className="olive-button"
+          >
+            {uploading
+              ? "Processing document..."
+              : "Upload & Process"}
+          </button>
+
+          {uploadSuccess && (
+            <div className="success-box">
+              <span>✓</span>
+
+              <div>
+                <strong>
+                  Upload successful
+                </strong>
+
+                <p>
+                  Your document is ready for questions.
+                </p>
+              </div>
             </div>
           )}
 
         </section>
 
+        {/* ================================================== */}
+        {/* SUMMARY */}
+        {/* ================================================== */}
 
-        {/* ===================================================
-            UPLOADED DOCUMENT
-        =================================================== */}
+        {summary && (
+          <section className="card summary-card">
 
-        {uploadedFile && (
-          <section className="card">
+            <div className="section-heading">
 
-            <h2>📁 Uploaded Document</h2>
+              <div className="section-icon summary-icon">
+                ✦
+              </div>
 
-            <div className="document-info">
+              <div>
+                <h2>
+                  Document Summary
+                </h2>
 
-              <p>
-                <strong>Name:</strong>{" "}
-                {uploadedFile.original_filename ||
-                  uploadedFile.filename ||
-                  uploadedFile.file_name ||
-                  file?.name ||
-                  "N/A"}
-              </p>
-
-              <p>
-                <strong>File ID:</strong>{" "}
-                {uploadedFile.file_id ||
-                  uploadedFile.id ||
-                  "N/A"}
-              </p>
-
-              {uploadedFile.chunks !== undefined && (
                 <p>
-                  <strong>Chunks:</strong>{" "}
-                  {uploadedFile.chunks}
+                  AI-generated overview of your document
                 </p>
-              )}
+              </div>
 
-              {uploadedFile.message && (
-                <p>
-                  <strong>Status:</strong>{" "}
-                  {uploadedFile.message}
-                </p>
-              )}
+            </div>
 
+            <div className="summary-text">
+              {summary}
             </div>
 
           </section>
         )}
 
+        {/* ================================================== */}
+        {/* QUESTION */}
+        {/* ================================================== */}
 
-        {/* ===================================================
-            SUMMARY
-        =================================================== */}
+        <section className="card question-card">
 
-        <section className="card">
+          <div className="section-heading">
 
-          <h2>📋 Document Summary</h2>
-
-          {summary ? (
-            <div className="summary">
-              {summary}
+            <div className="section-icon ask-icon">
+              ?
             </div>
-          ) : (
-            <div className="empty">
-              Summary will appear here after the
-              backend provides it.
+
+            <div>
+              <h2>
+                Ask a Question
+              </h2>
+
+              <p>
+                Ask anything about your uploaded document
+              </p>
             </div>
-          )}
 
-        </section>
+          </div>
 
+          <textarea
+            value={question}
+            onChange={(event) =>
+              setQuestion(
+                event.target.value
+              )
+            }
+            onKeyDown={handleKeyDown}
+            placeholder="Example: What is FinTech?"
+            rows="4"
+          />
 
-        {/* ===================================================
-            ASK QUESTION
-        =================================================== */}
+          <div className="question-footer">
 
-        <section className="card">
-
-          <h2>🔍 Ask a Question</h2>
-
-          <p className="description">
-            Ask something related to the uploaded document.
-          </p>
-
-          <div className="question-box">
-
-            <input
-              type="text"
-              value={question}
-              placeholder="Example: What is the candidate's name?"
-              onChange={(event) => {
-                setQuestion(event.target.value);
-                clearError();
-              }}
-              onKeyDown={handleQuestionKeyDown}
-              disabled={asking}
-            />
+            <span className="hint">
+              Press Enter to ask
+            </span>
 
             <button
               onClick={askQuestion}
-              disabled={asking || !question.trim()}
+              disabled={
+                asking ||
+                !question.trim()
+              }
+              className="brown-button"
             >
               {asking
-                ? "Searching..."
-                : "Ask Question"}
+                ? "Thinking..."
+                : "Ask Question →"}
             </button>
 
           </div>
 
         </section>
 
-
-        {/* ===================================================
-            ERROR
-        =================================================== */}
+        {/* ================================================== */}
+        {/* ERROR */}
+        {/* ================================================== */}
 
         {error && (
-          <div className="error">
-            ❌ {error}
-          </div>
+          <section className="error-box">
+
+            <span>!</span>
+
+            <div>
+              <strong>
+                Something went wrong
+              </strong>
+
+              <p>
+                {error}
+              </p>
+            </div>
+
+          </section>
         )}
 
-
-        {/* ===================================================
-            ANSWER
-        =================================================== */}
+        {/* ================================================== */}
+        {/* AI ANSWER */}
+        {/* ================================================== */}
 
         {answer && (
-          <section className="card">
+          <section className="card answer-card">
 
-            <h2>💡 Answer</h2>
+            <div className="answer-header">
 
-            <div className="answer">
+              <div className="ai-avatar">
+                ✦
+              </div>
+
+              <div>
+                <h2>
+                  AI Answer
+                </h2>
+
+                <p>
+                  Generated using your uploaded document
+                </p>
+              </div>
+
+            </div>
+
+            <div className="answer-content">
               {answer}
             </div>
 
           </section>
         )}
 
+        {/* ================================================== */}
+        {/* EVIDENCE */}
+        {/* ================================================== */}
 
-        {/* ===================================================
-            EVIDENCE
-        =================================================== */}
+        {results.length > 0 && (
+          <section className="card evidence-card">
 
-        {evidence.length > 0 && (
-          <section className="card">
+            <div className="evidence-header">
 
-            <h2>📚 Evidence / Retrieved Chunks</h2>
+              <div>
+                <h2>
+                  Evidence
+                </h2>
 
-            {evidence.map((item, index) => (
-
-              <div
-                className="evidence"
-                key={index}
-              >
-
-                <div className="evidence-header">
-
-                  <strong>
-                    Evidence {index + 1}
-                  </strong>
-
-                  {item.distance !== undefined && (
-                    <span>
-                      Distance:{" "}
-                      {Number(item.distance).toFixed(3)}
-                    </span>
-                  )}
-
-                </div>
-
-
-                {item.document && (
-                  <p>
-                    <strong>Document:</strong>{" "}
-                    {item.document}
-                  </p>
-                )}
-
-
-                {item.page !== undefined &&
-                  item.page !== null && (
-                    <p>
-                      <strong>Page:</strong>{" "}
-                      {item.page}
-                    </p>
-                  )}
-
-
-                {item.slide !== undefined &&
-                  item.slide !== null && (
-                    <p>
-                      <strong>Slide:</strong>{" "}
-                      {item.slide}
-                    </p>
-                  )}
-
-
-                {item.sheet && (
-                  <p>
-                    <strong>Sheet:</strong>{" "}
-                    {item.sheet}
-                  </p>
-                )}
-
-
-                {item.section && (
-                  <p>
-                    <strong>Section:</strong>{" "}
-                    {item.section}
-                  </p>
-                )}
-
-
-                {item.text && (
-                  <div className="evidence-text">
-                    {item.text}
-                  </div>
-                )}
-
+                <p>
+                  {results.length} relevant pieces
+                  of information retrieved
+                </p>
               </div>
 
-            ))}
+              <div className="evidence-count">
+                {results.length}
+              </div>
+
+            </div>
+
+            <div className="evidence-list">
+
+              {results.map(
+                (result, index) => (
+
+                  <div
+                    className="evidence-item"
+                    key={index}
+                  >
+
+                    <div className="evidence-top">
+
+                      <span className="result-number">
+                        {String(
+                          index + 1
+                        ).padStart(
+                          2,
+                          "0"
+                        )}
+                      </span>
+
+                      <span className="similarity">
+                        Similarity{" "}
+                        {Number(
+                          result.similarity || 0
+                        ).toFixed(2)}
+                      </span>
+
+                    </div>
+
+                    <p className="evidence-text">
+                      {result.text}
+                    </p>
+
+                    <div className="source-info">
+
+                      <span>
+                        📄{" "}
+                        {result.document ||
+                          "Unknown document"}
+                      </span>
+
+                      <span>
+                        📍{" "}
+                        {getSourceLocation(
+                          result
+                        )}
+                      </span>
+
+                    </div>
+
+                  </div>
+                )
+              )}
+
+            </div>
 
           </section>
         )}
 
       </main>
 
-
-      {/* =====================================================
-          FOOTER
-      ===================================================== */}
+      {/* ================================================== */}
+      {/* FOOTER */}
+      {/* ================================================== */}
 
       <footer>
-        Document Intelligence System
+        <span>
+          DocuMind
+        </span>
+
+        <span>
+          Document Intelligence • RAG • Ollama
+        </span>
       </footer>
 
     </div>

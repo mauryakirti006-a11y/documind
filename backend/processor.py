@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 import io
 import zipfile
 
@@ -7,16 +6,19 @@ import pymupdf
 from docx import Document
 import pandas as pd
 from pptx import Presentation
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 
 
-# --------------------------------------------------
-# VISUAL STORAGE
-# --------------------------------------------------
+# ============================================================
+# PATHS
+# ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-VISUAL_DIR = BASE_DIR / "data" / "visuals"
+BACKEND_DIR = Path(__file__).resolve().parent
+
+DATA_DIR = BACKEND_DIR.parent / "data"
+
+VISUAL_DIR = DATA_DIR / "visuals"
 
 VISUAL_DIR.mkdir(
     parents=True,
@@ -24,43 +26,98 @@ VISUAL_DIR.mkdir(
 )
 
 
+# ============================================================
+# TESSERACT CONFIGURATION
+# ============================================================
+
+# Expected location:
+#
+# backend/
+#     processor.py
+#     Tesseract-OCR/
+#         tesseract.exe
+#
+
+TESSERACT_PATH = (
+    BACKEND_DIR
+    
+    / "tesseract.exe"
+)
+
+
+if TESSERACT_PATH.exists():
+
+    pytesseract.pytesseract.tesseract_cmd = str(
+        TESSERACT_PATH
+    )
+
+    print(
+        "Tesseract found:",
+        TESSERACT_PATH
+    )
+
+else:
+
+    print(
+        "WARNING: Tesseract not found at:",
+        TESSERACT_PATH
+    )
+
+    print(
+        "OCR for images/scanned PDFs may not work."
+    )
+
+
+# ============================================================
+# SAVE VISUAL
+# ============================================================
+
 def save_visual(image, filename):
-    """
-    Save an image and return its relative path.
-    """
 
     output_path = VISUAL_DIR / filename
 
-    image.save(output_path)
+    image.save(
+        output_path
+    )
 
     return str(
         Path("data") / "visuals" / filename
     )
 
 
-# --------------------------------------------------
+# ============================================================
 # PDF PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_pdf(file_path):
 
-    document = pymupdf.open(file_path)
+    document = pymupdf.open(
+        file_path
+    )
 
     pages = []
 
-    for page_number, page in enumerate(document):
+    for page_number, page in enumerate(
+        document
+    ):
+
+        # ----------------------------------------
+        # Extract normal PDF text
+        # ----------------------------------------
 
         text = page.get_text().strip()
 
         ocr_used = False
-        visual = None
 
-        # ------------------------------------------
-        # Render page
-        # ------------------------------------------
+        # ----------------------------------------
+        # Render PDF page as image
+        # ----------------------------------------
 
         pix = page.get_pixmap(
-            matrix=pymupdf.Matrix(1.5, 1.5),
+            matrix=pymupdf.Matrix(
+                1.5,
+                1.5
+            ),
             alpha=False
         )
 
@@ -70,32 +127,44 @@ def process_pdf(file_path):
             pix.samples
         )
 
+        # ----------------------------------------
         # Save page image
+        # ----------------------------------------
+
         visual = save_visual(
             image,
             f"pdf_page_{page_number + 1}.png"
         )
 
-        # ------------------------------------------
-        # OCR if necessary
-        # ------------------------------------------
+        # ----------------------------------------
+        # OCR if PDF has little/no text
+        # ----------------------------------------
 
         if len(text) < 20:
 
-            ocr_image = image.convert("L")
+            if TESSERACT_PATH.exists():
 
-            from PIL import ImageOps
+                ocr_image = image.convert(
+                    "L"
+                )
 
-            ocr_image = ImageOps.autocontrast(
-                ocr_image
-            )
+                ocr_image = ImageOps.autocontrast(
+                    ocr_image
+                )
 
-            text = pytesseract.image_to_string(
-                ocr_image,
-                config="--psm 6"
-            ).strip()
+                text = pytesseract.image_to_string(
+                    ocr_image,
+                    config="--psm 6"
+                ).strip()
 
-            ocr_used = True
+                ocr_used = True
+
+            else:
+
+                print(
+                    "Tesseract unavailable. "
+                    f"Skipping OCR for PDF page {page_number + 1}."
+                )
 
         pages.append({
 
@@ -106,6 +175,7 @@ def process_pdf(file_path):
             "ocr_used": ocr_used,
 
             "visual": visual
+
         })
 
     document.close()
@@ -117,16 +187,19 @@ def process_pdf(file_path):
         "pages": pages,
 
         "page_count": len(pages)
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # DOCX PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_docx(file_path):
 
-    document = Document(file_path)
+    document = Document(
+        file_path
+    )
 
     paragraphs = []
 
@@ -136,7 +209,13 @@ def process_docx(file_path):
 
         if text:
 
-            paragraphs.append(text)
+            paragraphs.append(
+                text
+            )
+
+    # ----------------------------------------
+    # Tables
+    # ----------------------------------------
 
     tables = []
 
@@ -149,8 +228,11 @@ def process_docx(file_path):
         for row in table.rows:
 
             rows.append([
+
                 cell.text.strip()
+
                 for cell in row.cells
+
             ])
 
         tables.append({
@@ -158,50 +240,77 @@ def process_docx(file_path):
             "table": table_number + 1,
 
             "rows": rows
+
         })
 
-    # ------------------------------------------
-    # Extract embedded images
-    # ------------------------------------------
+    # ----------------------------------------
+    # Embedded images
+    # ----------------------------------------
 
     images = []
 
-    with zipfile.ZipFile(file_path, "r") as archive:
+    try:
 
-        image_files = [
-            name
-            for name in archive.namelist()
-            if name.startswith("word/media/")
-        ]
+        with zipfile.ZipFile(
+            file_path,
+            "r"
+        ) as archive:
 
-        for number, image_file in enumerate(
-            image_files
-        ):
+            image_files = [
 
-            image_bytes = archive.read(
-                image_file
-            )
+                name
 
-            image = Image.open(
-                io.BytesIO(image_bytes)
-            ).convert("RGB")
+                for name in archive.namelist()
 
-            visual = save_visual(
-                image,
-                f"docx_image_{number + 1}.png"
-            )
+                if name.startswith(
+                    "word/media/"
+                )
 
-            # OCR image so it can also be retrieved
-            image_text = pytesseract.image_to_string(
-                image
-            ).strip()
+            ]
 
-            images.append({
+            for number, image_file in enumerate(
+                image_files
+            ):
 
-                "text": image_text,
+                image_bytes = archive.read(
+                    image_file
+                )
 
-                "visual": visual
-            })
+                image = Image.open(
+                    io.BytesIO(
+                        image_bytes
+                    )
+                ).convert(
+                    "RGB"
+                )
+
+                visual = save_visual(
+                    image,
+                    f"docx_image_{number + 1}.png"
+                )
+
+                image_text = ""
+
+                if TESSERACT_PATH.exists():
+
+                    image_text = pytesseract.image_to_string(
+                        image
+                    ).strip()
+
+                images.append({
+
+                    "text": image_text,
+
+                    "visual": visual
+
+                })
+
+    except Exception as error:
+
+        print(
+            "DOCX image extraction warning:",
+            error
+        )
 
     return {
 
@@ -212,12 +321,13 @@ def process_docx(file_path):
         "tables": tables,
 
         "images": images
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # TXT PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_txt(file_path):
 
@@ -234,16 +344,19 @@ def process_txt(file_path):
         "type": "txt",
 
         "text": text
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # CSV PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_csv(file_path):
 
-    dataframe = pd.read_csv(file_path)
+    dataframe = pd.read_csv(
+        file_path
+    )
 
     return {
 
@@ -257,17 +370,22 @@ def process_csv(file_path):
             orient="records"
         ),
 
-        "row_count": len(dataframe)
+        "row_count": len(
+            dataframe
+        )
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # XLSX PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_xlsx(file_path):
 
-    excel_file = pd.ExcelFile(file_path)
+    excel_file = pd.ExcelFile(
+        file_path
+    )
 
     sheets = {}
 
@@ -287,6 +405,7 @@ def process_xlsx(file_path):
             ).to_dict(
                 orient="records"
             )
+
         }
 
     return {
@@ -294,12 +413,13 @@ def process_xlsx(file_path):
         "type": "xlsx",
 
         "sheets": sheets
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # PPTX PROCESSING
-# --------------------------------------------------
+# ============================================================
 
 def process_pptx(file_path):
 
@@ -315,37 +435,31 @@ def process_pptx(file_path):
 
         slide_text = []
 
-        visual = None
-
-        # ------------------------------------------
-        # Extract slide text
-        # ------------------------------------------
-
         for shape in slide.shapes:
 
-            if hasattr(shape, "text"):
+            if hasattr(
+                shape,
+                "text"
+            ):
 
                 text = shape.text.strip()
 
                 if text:
 
-                    slide_text.append(text)
-
-        # ------------------------------------------
-        # Render complete slide as image
-        # ------------------------------------------
-
-        # python-pptx does not directly render slides.
-        # Keep visual as None here; frontend can still
-        # use slide metadata.
+                    slide_text.append(
+                        text
+                    )
 
         slides.append({
 
             "slide": slide_number + 1,
 
-            "text": slide_text,
+            "text": "\n".join(
+                slide_text
+            ),
 
-            "visual": visual
+            "visual": None
+
         })
 
     return {
@@ -354,23 +468,47 @@ def process_pptx(file_path):
 
         "slides": slides,
 
-        "slide_count": len(slides)
+        "slide_count": len(
+            slides
+        )
+
     }
 
 
-# --------------------------------------------------
-# IMAGE OCR PROCESSING
-# --------------------------------------------------
+# ============================================================
+# IMAGE PROCESSING
+# ============================================================
 
 def process_image(file_path):
 
     image = Image.open(
         file_path
-    ).convert("RGB")
+    ).convert(
+        "RGB"
+    )
 
-    text = pytesseract.image_to_string(
-        image
-    ).strip()
+    text = ""
+
+    # ----------------------------------------
+    # OCR
+    # ----------------------------------------
+
+    if TESSERACT_PATH.exists():
+
+        text = pytesseract.image_to_string(
+            image
+        ).strip()
+
+    else:
+
+        print(
+            "Tesseract not available. "
+            "Image OCR skipped."
+        )
+
+    # ----------------------------------------
+    # Save image
+    # ----------------------------------------
 
     filename = (
         f"uploaded_image_"
@@ -389,12 +527,13 @@ def process_image(file_path):
         "text": text,
 
         "visual": visual
+
     }
 
 
-# --------------------------------------------------
+# ============================================================
 # MAIN FILE PROCESSOR
-# --------------------------------------------------
+# ============================================================
 
 def process_file(file_path):
 
@@ -402,37 +541,95 @@ def process_file(file_path):
         file_path
     ).suffix.lower()
 
+    print(
+        f"Processing file: {file_path}"
+    )
+
+    print(
+        f"File type: {extension}"
+    )
+
+    # ----------------------------------------
+    # PDF
+    # ----------------------------------------
+
     if extension == ".pdf":
 
-        return process_pdf(file_path)
+        return process_pdf(
+            file_path
+        )
+
+    # ----------------------------------------
+    # DOCX
+    # ----------------------------------------
 
     elif extension == ".docx":
 
-        return process_docx(file_path)
+        return process_docx(
+            file_path
+        )
+
+    # ----------------------------------------
+    # TXT
+    # ----------------------------------------
 
     elif extension == ".txt":
 
-        return process_txt(file_path)
+        return process_txt(
+            file_path
+        )
+
+    # ----------------------------------------
+    # CSV
+    # ----------------------------------------
 
     elif extension == ".csv":
 
-        return process_csv(file_path)
+        return process_csv(
+            file_path
+        )
+
+    # ----------------------------------------
+    # XLSX
+    # ----------------------------------------
 
     elif extension == ".xlsx":
 
-        return process_xlsx(file_path)
+        return process_xlsx(
+            file_path
+        )
+
+    # ----------------------------------------
+    # PPTX
+    # ----------------------------------------
 
     elif extension == ".pptx":
 
-        return process_pptx(file_path)
+        return process_pptx(
+            file_path
+        )
+
+    # ----------------------------------------
+    # IMAGE
+    # ----------------------------------------
 
     elif extension in [
+
         ".png",
+
         ".jpg",
+
         ".jpeg"
+
     ]:
 
-        return process_image(file_path)
+        return process_image(
+            file_path
+        )
+
+    # ----------------------------------------
+    # Unsupported
+    # ----------------------------------------
 
     else:
 
@@ -440,4 +637,59 @@ def process_file(file_path):
 
             "error":
             f"Unsupported file type: {extension}"
+
         }
+
+
+# ============================================================
+# TEST
+# ============================================================
+
+if __name__ == "__main__":
+
+    print()
+    print(
+        "======================================"
+    )
+
+    print(
+        "DOCUMENT PROCESSOR"
+    )
+
+    print(
+        "======================================"
+    )
+
+    print()
+
+    if TESSERACT_PATH.exists():
+
+        print(
+            "✓ Tesseract is configured"
+        )
+
+        try:
+
+            version = (
+                pytesseract.get_tesseract_version()
+            )
+
+            print(
+                "✓ Tesseract version:",
+                version
+            )
+
+        except Exception as error:
+
+            print(
+                "✗ Tesseract test failed:",
+                error
+            )
+
+    else:
+
+        print(
+            "✗ Tesseract executable not found"
+        )
+
+    print()
